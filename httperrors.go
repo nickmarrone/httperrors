@@ -112,22 +112,41 @@ func Wrap(err error, msg string) *HTTPError {
 
 // Wrapf wraps an existing error with printf paramaters
 func Wrapf(err error, format string, args ...interface{}) *HTTPError {
-	return Wrap(err, fmt.Sprintf(format, args...))
+	resp := HTTPError{
+		msg:   fmt.Sprintf(format, args...),
+		code:  UninitializedResponseCode,
+		inner: err,
+	}
+
+	// Wrap will only get a new stack trace if one does not exist
+	_, ok := err.(*HTTPError)
+	if !ok {
+		resp.stack = stackTrace()
+	}
+	return &resp
 }
 
 // New creates a new *HTTPError
 func New(msg string) *HTTPError {
-	return Wrap(nil, msg)
+	return &HTTPError{
+		msg:   msg,
+		code:  UninitializedResponseCode,
+		stack: stackTrace(),
+	}
 }
 
 // Newf creates a new *HTTPError with printf parameters
 func Newf(format string, args ...interface{}) *HTTPError {
-	return Wrap(nil, fmt.Sprintf(format, args...))
+	return &HTTPError{
+		msg:   fmt.Sprintf(format, args...),
+		code:  UninitializedResponseCode,
+		stack: stackTrace(),
+	}
 }
 
 // stackTrace returns the current stack trace
 func stackTrace() string {
-	buf := make([]byte, 1024)
+	buf := make([]byte, 2048)
 	bytesRead := 0
 	for {
 		bytesRead = runtime.Stack(buf, false)
@@ -136,5 +155,9 @@ func stackTrace() string {
 		}
 		buf = make([]byte, len(buf)*2)
 	}
-	return string(buf[:bytesRead])
+
+	// split stack trace to remove lines inside httperrors
+	lines := strings.Split(string(buf[:bytesRead]), "\n")
+	trimmedLines := append(lines[:1], lines[5:]...)
+	return strings.Join(trimmedLines, "\n")
 }

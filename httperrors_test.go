@@ -116,6 +116,27 @@ var _ = Describe("HTTPError", func() {
 			It("Gets the stack trace from the innermost HTTPError", func() {
 				Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.stack))
 			})
+
+			Describe("strips out parts of the stack trace relating to httperrors library", func() {
+				It("for a New error", func() {
+					httpErr := New("test err")
+					Expect(httpErr.StackTrace()).ToNot(ContainSubstring("httperrors/httperrors.go"))
+				})
+				It("for a Newf error", func() {
+					httpErr := Newf("test err %d", 2)
+					Expect(httpErr.StackTrace()).ToNot(ContainSubstring("httperrors/httperrors.go"))
+				})
+				It("for a Wrap error", func() {
+					err := fmt.Errorf("base test err")
+					httpErr := Wrap(err, "test err")
+					Expect(httpErr.StackTrace()).ToNot(ContainSubstring("httperrors/httperrors.go"))
+				})
+				It("for a Wrapf error", func() {
+					err := fmt.Errorf("base test err")
+					httpErr := Wrapf(err, "test err %d", 2)
+					Expect(httpErr.StackTrace()).ToNot(ContainSubstring("httperrors/httperrors.go"))
+				})
+			})
 		})
 	})
 
