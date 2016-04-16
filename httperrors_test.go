@@ -11,7 +11,7 @@ import (
 var _ = Describe("HTTPError", func() {
 	var (
 		err                   error
-		outerHTTPErr, httpErr *HTTPError
+		outerHTTPErr, httpErr HTTPError
 	)
 
 	Describe("Creation", func() {
@@ -24,22 +24,14 @@ var _ = Describe("HTTPError", func() {
 			})
 
 			It("Wraps an error", func() {
-				Expect(httpErr.inner).To(Equal(err))
+				Expect(httpErr.InnerMessage()).To(Equal(err.Error()))
 			})
 			It("Wraps another HTTPError", func() {
-				Expect(outerHTTPErr.msg).To(Equal("outer http test err"))
-				Expect(outerHTTPErr.inner).To(Equal(httpErr))
-
-				tempErr, ok := outerHTTPErr.inner.(*HTTPError)
-				Expect(ok).To(BeTrue())
-				Expect(tempErr.inner).To(Equal(err))
+				Expect(outerHTTPErr.Message()).To(Equal("outer http test err"))
+				Expect(outerHTTPErr.InnerMessage()).To(Equal(err.Error()))
 			})
-			It("Only the innermost HTTPError has a stack trace", func() {
-				Expect(outerHTTPErr.stack).To(BeEmpty())
-
-				tempErr, ok := outerHTTPErr.inner.(*HTTPError)
-				Expect(ok).To(BeTrue())
-				Expect(tempErr.stack).ToNot(BeEmpty())
+			It("All levels of HTTPError have the same stack trace", func() {
+				Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.StackTrace()))
 			})
 		})
 
@@ -48,24 +40,24 @@ var _ = Describe("HTTPError", func() {
 				err = fmt.Errorf("test error")
 				httpErr = Wrapf(err, "%s test err", "http")
 
-				Expect(httpErr.msg).To(Equal("http test err"))
-				Expect(httpErr.inner).To(Equal(err))
+				Expect(httpErr.Message()).To(Equal("http test err"))
+				Expect(httpErr.InnerMessage()).To(Equal(err.Error()))
 			})
 		})
 
 		Describe("New", func() {
 			It("Creates a new HTTPError", func() {
 				httpErr = New("http test err")
-				Expect(httpErr.msg).To(Equal("http test err"))
-				Expect(httpErr.inner).To(BeNil())
+				Expect(httpErr.Message()).To(Equal("http test err"))
+				Expect(httpErr.InnerMessage()).To(Equal("http test err"))
 			})
 		})
 
 		Describe("Newf", func() {
 			It("Creates a new HTTPError with printf parameters", func() {
 				httpErr = Newf("%s test err", "http")
-				Expect(httpErr.msg).To(Equal("http test err"))
-				Expect(httpErr.inner).To(BeNil())
+				Expect(httpErr.Message()).To(Equal("http test err"))
+				Expect(httpErr.InnerMessage()).To(Equal("http test err"))
 			})
 		})
 	})
@@ -114,7 +106,7 @@ var _ = Describe("HTTPError", func() {
 
 		Describe("StackTrace", func() {
 			It("Gets the stack trace from the innermost HTTPError", func() {
-				Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.stack))
+				Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.StackTrace()))
 			})
 
 			Describe("strips out parts of the stack trace relating to httperrors library", func() {
@@ -147,7 +139,7 @@ var _ = Describe("HTTPError", func() {
 		})
 
 		It("Gets the innermost stack trace", func() {
-			Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.stack))
+			Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.StackTrace()))
 		})
 
 		It("Gets the innermost message", func() {
