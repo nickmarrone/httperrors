@@ -38,29 +38,54 @@ type baseHTTPError struct {
 const (
 	// UninitializedResponseCode indicates that the response code for this HTTPError was never set
 	UninitializedResponseCode = -1
+
+	// UnknownErrorMsg is returned when an error message is not specified
+	UnknownErrorMsg = "Unknown error"
+
+	// UninitializedStackTrace is returned when a standard error is cast to an HTTPError
+	UninitializedStackTrace = "Stack trace unavailable"
 )
 
 func (e *baseHTTPError) Error() string {
-	errorMsgs := []string{
-		"ERROR:\t* " + e.msg,
-	}
+	var errorMsgs []string
+	var inner error
 
-	inner := e.inner
+	inner = e
 	for inner != nil {
 		httpError, ok := inner.(*baseHTTPError)
 		if ok {
-			errorMsgs = append(errorMsgs, "\t* "+httpError.msg)
+			if httpError.msg != "" {
+				errorMsgs = append(errorMsgs, httpError.msg)
+			}
 			inner = httpError.inner
 		} else {
-			errorMsgs = append(errorMsgs, "\t* "+inner.Error())
+			errorMsgs = append(errorMsgs, inner.Error())
 			inner = nil
 		}
+	}
+
+	if len(errorMsgs) == 0 {
+		errorMsgs = append(errorMsgs, UnknownErrorMsg)
 	}
 	return strings.Join(errorMsgs, "\n")
 }
 
 func (e *baseHTTPError) Message() string {
-	return e.msg
+	var ok bool
+	var validErr, nextValidErr *baseHTTPError
+
+	validErr = e
+	for validErr.msg == "" {
+		if validErr.inner == nil {
+			return UnknownErrorMsg
+		}
+		nextValidErr, ok = validErr.inner.(*baseHTTPError)
+		if !ok {
+			return validErr.inner.Error()
+		}
+		validErr = nextValidErr
+	}
+	return validErr.msg
 }
 
 func (e *baseHTTPError) InnerMessage() string {
@@ -73,6 +98,10 @@ func (e *baseHTTPError) InnerMessage() string {
 			return msgErr.inner.Error()
 		}
 		msgErr = nextMsgErr
+	}
+
+	if msgErr.msg == "" {
+		return UnknownErrorMsg
 	}
 	return msgErr.msg
 }
@@ -107,6 +136,21 @@ func (e *baseHTTPError) StackTrace() string {
 		stackErr = nextStackErr
 	}
 	return stackErr.stack
+}
+
+// ToHTTPError detects if the error is an HTTPError and returns it or
+// creates an HTTPError from a standard error
+func ToHTTPError(err error) HTTPError {
+	httpErr, ok := err.(HTTPError)
+	if !ok {
+		return &baseHTTPError{
+			msg:   "",
+			code:  UninitializedResponseCode,
+			inner: err,
+			stack: UninitializedStackTrace,
+		}
+	}
+	return httpErr
 }
 
 // Wrap takes an existing error and turns it into a HTTPError
