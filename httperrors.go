@@ -19,7 +19,7 @@ type HTTPError interface {
 	InnerMessage() string
 
 	// SetResponseCode sets the response code of this HTTPError
-	SetResponseCode(code int)
+	SetResponseCode(code int) HTTPError
 
 	// ResponseCode gets the outermost response code
 	ResponseCode() int
@@ -106,8 +106,9 @@ func (e *baseHTTPError) InnerMessage() string {
 	return msgErr.msg
 }
 
-func (e *baseHTTPError) SetResponseCode(code int) {
+func (e *baseHTTPError) SetResponseCode(code int) HTTPError {
 	e.code = code
+	return e
 }
 
 func (e *baseHTTPError) ResponseCode() int {

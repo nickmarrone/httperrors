@@ -173,6 +173,11 @@ var _ = Describe("HTTPError", func() {
 			It("Responds with UninitializedResponseCode if it has not been set", func() {
 				Expect(outerHTTPErr.ResponseCode()).To(Equal(UninitializedResponseCode))
 			})
+			It("Can use method chaining", func() {
+				chainedErr := New("test err").SetResponseCode(http.StatusInternalServerError)
+				Expect(chainedErr.ResponseCode()).To(Equal(http.StatusInternalServerError))
+				Expect(chainedErr.Message()).To(Equal("test err"))
+			})
 			It("Responds with the outermost response code when set", func() {
 				httpErr.SetResponseCode(http.StatusInternalServerError)
 				Expect(outerHTTPErr.ResponseCode()).To(Equal(http.StatusInternalServerError))
