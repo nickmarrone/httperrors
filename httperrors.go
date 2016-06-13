@@ -19,25 +19,35 @@ type HTTPError interface {
 	InnerMessage() string
 
 	// SetResponseCode sets the response code of this HTTPError
-	SetResponseCode(code int) HTTPError
+	SetResponseCode(respCode int) HTTPError
 
 	// ResponseCode gets the outermost response code
 	ResponseCode() int
+
+	// SetErrorCode sets the error code of this HTTPError to the provided string
+	SetErrorCode(errCode string) HTTPError
+
+	// ErrorCode gets the outermost error code
+	ErrorCode() string
 
 	// StackTrace gets the innermost available stacktrace
 	StackTrace() string
 }
 
 type baseHTTPError struct {
-	msg   string
-	code  int
-	stack string
-	inner error
+	msg      string
+	respCode int
+	errCode  string
+	stack    string
+	inner    error
 }
 
 const (
 	// UninitializedResponseCode indicates that the response code for this HTTPError was never set
 	UninitializedResponseCode = -1
+
+	// UninitializedErrorCode indicates that the error code for this HTTPError was never set
+	UninitializedErrorCode = ""
 
 	// UnknownErrorMsg is returned when an error message is not specified
 	UnknownErrorMsg = "Unknown error"
@@ -106,8 +116,8 @@ func (e *baseHTTPError) InnerMessage() string {
 	return msgErr.msg
 }
 
-func (e *baseHTTPError) SetResponseCode(code int) HTTPError {
-	e.code = code
+func (e *baseHTTPError) SetResponseCode(respCode int) HTTPError {
+	e.respCode = respCode
 	return e
 }
 
@@ -115,14 +125,33 @@ func (e *baseHTTPError) ResponseCode() int {
 	var ok bool
 	var codeErr, nextCodeErr *baseHTTPError
 	codeErr = e
-	for codeErr.code == UninitializedResponseCode {
+	for codeErr.respCode == UninitializedResponseCode {
 		nextCodeErr, ok = codeErr.inner.(*baseHTTPError)
 		if !ok {
-			return codeErr.code
+			return codeErr.respCode
 		}
 		codeErr = nextCodeErr
 	}
-	return codeErr.code
+	return codeErr.respCode
+}
+
+func (e *baseHTTPError) SetErrorCode(errCode string) HTTPError {
+	e.errCode = errCode
+	return e
+}
+
+func (e *baseHTTPError) ErrorCode() string {
+	var ok bool
+	var codeErr, nextCodeErr *baseHTTPError
+	codeErr = e
+	for codeErr.errCode == UninitializedErrorCode {
+		nextCodeErr, ok = codeErr.inner.(*baseHTTPError)
+		if !ok {
+			return codeErr.errCode
+		}
+		codeErr = nextCodeErr
+	}
+	return codeErr.errCode
 }
 
 func (e *baseHTTPError) StackTrace() string {
@@ -145,10 +174,10 @@ func ToHTTPError(err error) HTTPError {
 	httpErr, ok := err.(HTTPError)
 	if !ok {
 		return &baseHTTPError{
-			msg:   "",
-			code:  UninitializedResponseCode,
-			inner: err,
-			stack: UninitializedStackTrace,
+			msg:      "",
+			respCode: UninitializedResponseCode,
+			inner:    err,
+			stack:    UninitializedStackTrace,
 		}
 	}
 	return httpErr
@@ -157,9 +186,9 @@ func ToHTTPError(err error) HTTPError {
 // Wrap takes an existing error and turns it into a HTTPError
 func Wrap(err error, msg string) HTTPError {
 	resp := baseHTTPError{
-		msg:   msg,
-		code:  UninitializedResponseCode,
-		inner: err,
+		msg:      msg,
+		respCode: UninitializedResponseCode,
+		inner:    err,
 	}
 
 	// Wrap will only get a new stack trace if one does not exist
@@ -173,9 +202,9 @@ func Wrap(err error, msg string) HTTPError {
 // Wrapf wraps an existing error with printf paramaters
 func Wrapf(err error, format string, args ...interface{}) HTTPError {
 	resp := baseHTTPError{
-		msg:   fmt.Sprintf(format, args...),
-		code:  UninitializedResponseCode,
-		inner: err,
+		msg:      fmt.Sprintf(format, args...),
+		respCode: UninitializedResponseCode,
+		inner:    err,
 	}
 
 	// Wrap will only get a new stack trace if one does not exist
@@ -189,18 +218,18 @@ func Wrapf(err error, format string, args ...interface{}) HTTPError {
 // New creates a new HTTPError
 func New(msg string) HTTPError {
 	return &baseHTTPError{
-		msg:   msg,
-		code:  UninitializedResponseCode,
-		stack: stackTrace(),
+		msg:      msg,
+		respCode: UninitializedResponseCode,
+		stack:    stackTrace(),
 	}
 }
 
 // Newf creates a new HTTPError with printf parameters
 func Newf(format string, args ...interface{}) HTTPError {
 	return &baseHTTPError{
-		msg:   fmt.Sprintf(format, args...),
-		code:  UninitializedResponseCode,
-		stack: stackTrace(),
+		msg:      fmt.Sprintf(format, args...),
+		respCode: UninitializedResponseCode,
+		stack:    stackTrace(),
 	}
 }
 

@@ -187,6 +187,24 @@ var _ = Describe("HTTPError", func() {
 			})
 		})
 
+		Describe("ErrorCode", func() {
+			It("Responds with UninitializedErrorCode if it has not been set", func() {
+				Expect(outerHTTPErr.ErrorCode()).To(Equal(UninitializedErrorCode))
+			})
+			It("Can use method chaining", func() {
+				chainedErr := New("test err").SetErrorCode("DUPLICATE")
+				Expect(chainedErr.ErrorCode()).To(Equal("DUPLICATE"))
+				Expect(chainedErr.Message()).To(Equal("test err"))
+			})
+			It("Responds with the outermost error code when set", func() {
+				httpErr.SetErrorCode("DUPLICATE")
+				Expect(outerHTTPErr.ErrorCode()).To(Equal("DUPLICATE"))
+
+				outerHTTPErr.SetErrorCode("INVALID")
+				Expect(outerHTTPErr.ErrorCode()).To(Equal("INVALID"))
+			})
+		})
+
 		Describe("StackTrace", func() {
 			It("Gets the stack trace from the innermost HTTPError", func() {
 				Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.StackTrace()))
