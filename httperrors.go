@@ -183,8 +183,13 @@ func ToHTTPError(err error) HTTPError {
 	return httpErr
 }
 
-// Wrap takes an existing error and turns it into a HTTPError
+// Wrap takes an existing error and turns it into a HTTPError with a stacktrace.
+// Will return nil if err is nil.
 func Wrap(err error, msg string) HTTPError {
+	if err == nil {
+		return nil
+	}
+
 	resp := baseHTTPError{
 		msg:      msg,
 		respCode: UninitializedResponseCode,
@@ -199,8 +204,13 @@ func Wrap(err error, msg string) HTTPError {
 	return &resp
 }
 
-// Wrapf wraps an existing error with printf paramaters
+// Wrapf wraps an existing error with printf paramaters and turns it into a
+// HTT PError with a stacktrace. Will return nil if err is nil.
 func Wrapf(err error, format string, args ...interface{}) HTTPError {
+	if err == nil {
+		return nil
+	}
+
 	resp := baseHTTPError{
 		msg:      fmt.Sprintf(format, args...),
 		respCode: UninitializedResponseCode,
