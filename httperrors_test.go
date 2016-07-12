@@ -18,6 +18,21 @@ var _ = Describe("HTTPError", func() {
 	)
 
 	Describe("Creating", func() {
+		Describe("wrapping a nil", func() {
+			BeforeEach(func() {
+				err = nil
+			})
+
+			It("should return nil for Wrap", func() {
+				httpErr = Wrap(err, "more context")
+				Expect(httpErr).To(BeNil())
+			})
+
+			It("should return nil for Wrapf", func() {
+				httpErr = Wrapf(err, "more %s", "context")
+				Expect(httpErr).To(BeNil())
+			})
+		})
 
 		Describe("a wrapped error", func() {
 			BeforeEach(func() {
