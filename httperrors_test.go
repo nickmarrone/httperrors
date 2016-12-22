@@ -1,6 +1,7 @@
 package httperrors
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -41,6 +42,9 @@ var _ = Describe("HTTPError", func() {
 			It("at any level has the same stack trace", func() {
 				Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.StackTrace()))
 			})
+			It("won't wrap a nil error", func() {
+				Expect(Wrap(nil, "nil")).To(BeNil())
+			})
 		})
 
 		Describe("a wrapped error with printf parameters", func() {
@@ -64,6 +68,9 @@ var _ = Describe("HTTPError", func() {
 			})
 			It("at any level has the same stack trace", func() {
 				Expect(outerHTTPErr.StackTrace()).To(Equal(httpErr.StackTrace()))
+			})
+			It("won't wrap a nil error", func() {
+				Expect(Wrapf(nil, "nil %s", "foo")).To(BeNil())
 			})
 		})
 
@@ -179,10 +186,10 @@ var _ = Describe("HTTPError", func() {
 				Expect(chainedErr.Message()).To(Equal("test err"))
 			})
 			It("Responds with the outermost response code when set", func() {
-				httpErr.SetResponseCode(http.StatusInternalServerError)
+				_ = httpErr.SetResponseCode(http.StatusInternalServerError)
 				Expect(outerHTTPErr.ResponseCode()).To(Equal(http.StatusInternalServerError))
 
-				outerHTTPErr.SetResponseCode(http.StatusUnauthorized)
+				_ = outerHTTPErr.SetResponseCode(http.StatusUnauthorized)
 				Expect(outerHTTPErr.ResponseCode()).To(Equal(http.StatusUnauthorized))
 			})
 		})
@@ -197,10 +204,10 @@ var _ = Describe("HTTPError", func() {
 				Expect(chainedErr.Message()).To(Equal("test err"))
 			})
 			It("Responds with the outermost error code when set", func() {
-				httpErr.SetErrorCode("DUPLICATE")
+				_ = httpErr.SetErrorCode("DUPLICATE")
 				Expect(outerHTTPErr.ErrorCode()).To(Equal("DUPLICATE"))
 
-				outerHTTPErr.SetErrorCode("INVALID")
+				_ = outerHTTPErr.SetErrorCode("INVALID")
 				Expect(outerHTTPErr.ErrorCode()).To(Equal("INVALID"))
 			})
 		})
@@ -212,24 +219,57 @@ var _ = Describe("HTTPError", func() {
 
 			Describe("strips out parts of the stack trace relating to httperrors library", func() {
 				It("for a New error", func() {
-					httpErr := New("test err")
+					httpErr = New("test err")
 					Expect(httpErr.StackTrace()).ToNot(ContainSubstring("httperrors/httperrors.go"))
 				})
 				It("for a Newf error", func() {
-					httpErr := Newf("test err %d", 2)
+					httpErr = Newf("test err %d", 2)
 					Expect(httpErr.StackTrace()).ToNot(ContainSubstring("httperrors/httperrors.go"))
 				})
 				It("for a Wrap error", func() {
 					err := fmt.Errorf("base test err")
-					httpErr := Wrap(err, "test err")
+					httpErr = Wrap(err, "test err")
 					Expect(httpErr.StackTrace()).ToNot(ContainSubstring("httperrors/httperrors.go"))
 				})
 				It("for a Wrapf error", func() {
 					err := fmt.Errorf("base test err")
-					httpErr := Wrapf(err, "test err %d", 2)
+					httpErr = Wrapf(err, "test err %d", 2)
 					Expect(httpErr.StackTrace()).ToNot(ContainSubstring("httperrors/httperrors.go"))
 				})
 			})
+		})
+	})
+
+	Describe("a retriable error", func() {
+		BeforeEach(func() {
+			httpErr = New("http test err")
+		})
+
+		It("sets the retriable status", func() {
+			Expect(httpErr.Retriable()).To(BeTrue(), "Default retriable status should be true")
+			_ = httpErr.SetRetriable(false)
+			Expect(httpErr.Retriable()).To(BeFalse())
+			Expect(IsRetriableError(httpErr)).To(BeFalse())
+		})
+
+		It("wraps a retriable error", func() {
+			outerHTTPErr = Wrap(httpErr, "outer http test err")
+			Expect(outerHTTPErr.Retriable()).To(BeTrue())
+			Expect(IsRetriableError(httpErr)).To(BeTrue())
+		})
+
+		It("wraps a nonretriable error", func() {
+			_ = httpErr.SetRetriable(false)
+			outerHTTPErr = Wrap(httpErr, "outer http test err")
+			Expect(outerHTTPErr.Retriable()).To(BeFalse())
+			Expect(IsUnretriableError(httpErr)).To(BeTrue())
+		})
+
+		It("defaults to retriable for non-httperrors", func() {
+			err := errors.New("random error")
+			outerHTTPErr = Wrap(err, "outer http test err")
+			Expect(outerHTTPErr.Retriable()).To(BeTrue())
+			Expect(IsUnretriableError(httpErr)).To(BeFalse())
 		})
 	})
 
