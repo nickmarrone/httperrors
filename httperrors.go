@@ -2,6 +2,7 @@ package httperrors
 
 import (
 	"fmt"
+	"net/http"
 	"runtime"
 	"strings"
 )
@@ -32,14 +33,22 @@ type HTTPError interface {
 
 	// StackTrace gets the innermost available stacktrace
 	StackTrace() string
+
+	// SetRetriable sets if this error is retriable
+	SetRetriable(retriable bool) HTTPError
+
+	// Retriable checks if the error could be addressed by retrying the request. All
+	// errors are considered retriable by default unless otherwise specified
+	Retriable() bool
 }
 
 type baseHTTPError struct {
-	msg      string
-	respCode int
-	errCode  string
-	stack    string
-	inner    error
+	msg       string
+	respCode  int
+	errCode   string
+	stack     string
+	inner     error
+	retriable bool
 }
 
 const (
@@ -56,6 +65,11 @@ const (
 	UninitializedStackTrace = "Stack trace unavailable"
 )
 
+/********************************************************************************
+* HTTPError interface implementation
+********************************************************************************/
+
+// Error implements error interface. Responds with all messages wrapped in stack of HTTPErrors.
 func (e *baseHTTPError) Error() string {
 	var errorMsgs []string
 	var inner error
@@ -80,6 +94,7 @@ func (e *baseHTTPError) Error() string {
 	return strings.Join(errorMsgs, "\n")
 }
 
+// Message gets the outermost message
 func (e *baseHTTPError) Message() string {
 	var ok bool
 	var validErr, nextValidErr *baseHTTPError
@@ -98,6 +113,7 @@ func (e *baseHTTPError) Message() string {
 	return validErr.msg
 }
 
+// InnerMessage gets the innermost message
 func (e *baseHTTPError) InnerMessage() string {
 	var ok bool
 	var msgErr, nextMsgErr *baseHTTPError
@@ -116,11 +132,13 @@ func (e *baseHTTPError) InnerMessage() string {
 	return msgErr.msg
 }
 
+// SetResponseCode sets the response code of this HTTPError
 func (e *baseHTTPError) SetResponseCode(respCode int) HTTPError {
 	e.respCode = respCode
 	return e
 }
 
+// ResponseCode gets the outermost response code
 func (e *baseHTTPError) ResponseCode() int {
 	var ok bool
 	var codeErr, nextCodeErr *baseHTTPError
@@ -135,11 +153,13 @@ func (e *baseHTTPError) ResponseCode() int {
 	return codeErr.respCode
 }
 
+// SetErrorCode sets the error code of this HTTPError to the provided string
 func (e *baseHTTPError) SetErrorCode(errCode string) HTTPError {
 	e.errCode = errCode
 	return e
 }
 
+// ErrorCode gets the outermost error code
 func (e *baseHTTPError) ErrorCode() string {
 	var ok bool
 	var codeErr, nextCodeErr *baseHTTPError
@@ -154,6 +174,7 @@ func (e *baseHTTPError) ErrorCode() string {
 	return codeErr.errCode
 }
 
+// StackTrace gets the innermost available stacktrace
 func (e *baseHTTPError) StackTrace() string {
 	var ok bool
 	var stackErr, nextStackErr *baseHTTPError
@@ -168,23 +189,35 @@ func (e *baseHTTPError) StackTrace() string {
 	return stackErr.stack
 }
 
-// ToHTTPError detects if the error is an HTTPError and returns it or
-// creates an HTTPError from a standard error
-func ToHTTPError(err error) HTTPError {
-	httpErr, ok := err.(HTTPError)
-	if !ok {
-		return &baseHTTPError{
-			msg:      "",
-			respCode: UninitializedResponseCode,
-			inner:    err,
-			stack:    UninitializedStackTrace,
-		}
-	}
-	return httpErr
+// SetRetriable sets if this error is retriable
+func (e *baseHTTPError) SetRetriable(retriable bool) HTTPError {
+	e.retriable = retriable
+	return e
 }
+
+// Retriable checks if the error could be addressed by retrying the request. All
+// errors are considered retriable by default unless otherwise specified
+func (e *baseHTTPError) Retriable() bool {
+	if nil == e.inner {
+		return e.retriable
+	}
+	httpErr, ok := e.inner.(HTTPError)
+	if !ok {
+		return true
+	}
+	return httpErr.Retriable()
+}
+
+/********************************************************************************
+* HTTPError instantiation functions
+********************************************************************************/
 
 // Wrap takes an existing error and turns it into a HTTPError
 func Wrap(err error, msg string) HTTPError {
+	if err == nil {
+		return nil
+	}
+
 	resp := baseHTTPError{
 		msg:      msg,
 		respCode: UninitializedResponseCode,
@@ -192,8 +225,7 @@ func Wrap(err error, msg string) HTTPError {
 	}
 
 	// Wrap will only get a new stack trace if one does not exist
-	_, ok := err.(*baseHTTPError)
-	if !ok {
+	if _, ok := err.(*baseHTTPError); !ok {
 		resp.stack = stackTrace()
 	}
 	return &resp
@@ -201,6 +233,10 @@ func Wrap(err error, msg string) HTTPError {
 
 // Wrapf wraps an existing error with printf paramaters
 func Wrapf(err error, format string, args ...interface{}) HTTPError {
+	if err == nil {
+		return nil
+	}
+
 	resp := baseHTTPError{
 		msg:      fmt.Sprintf(format, args...),
 		respCode: UninitializedResponseCode,
@@ -208,8 +244,7 @@ func Wrapf(err error, format string, args ...interface{}) HTTPError {
 	}
 
 	// Wrap will only get a new stack trace if one does not exist
-	_, ok := err.(*baseHTTPError)
-	if !ok {
+	if _, ok := err.(*baseHTTPError); !ok {
 		resp.stack = stackTrace()
 	}
 	return &resp
@@ -218,19 +253,66 @@ func Wrapf(err error, format string, args ...interface{}) HTTPError {
 // New creates a new HTTPError
 func New(msg string) HTTPError {
 	return &baseHTTPError{
-		msg:      msg,
-		respCode: UninitializedResponseCode,
-		stack:    stackTrace(),
+		msg:       msg,
+		respCode:  UninitializedResponseCode,
+		stack:     stackTrace(),
+		retriable: true,
 	}
 }
 
 // Newf creates a new HTTPError with printf parameters
 func Newf(format string, args ...interface{}) HTTPError {
 	return &baseHTTPError{
-		msg:      fmt.Sprintf(format, args...),
-		respCode: UninitializedResponseCode,
-		stack:    stackTrace(),
+		msg:       fmt.Sprintf(format, args...),
+		respCode:  UninitializedResponseCode,
+		stack:     stackTrace(),
+		retriable: true,
 	}
+}
+
+/********************************************************************************
+* Utility Functions
+********************************************************************************/
+
+// ToHTTPError detects if the error is an HTTPError and returns it or
+// creates an HTTPError from a standard error
+func ToHTTPError(err error) HTTPError {
+	httpErr, ok := err.(HTTPError)
+	if !ok {
+		return &baseHTTPError{
+			msg:       "",
+			respCode:  UninitializedResponseCode,
+			inner:     err,
+			stack:     UninitializedStackTrace,
+			retriable: true,
+		}
+	}
+	return httpErr
+}
+
+// HTTPResponseCodeFromError returns the correct http response code for a given error message
+func HTTPResponseCodeFromError(err error) int {
+	httperr := ToHTTPError(err)
+	if httperr.ResponseCode() == UninitializedResponseCode {
+		return http.StatusInternalServerError
+	}
+	return httperr.ResponseCode()
+}
+
+// IsUnretriableError checks if an error is Unretriable. If error provided does not
+// implement the HTTPError interface, it is considered retriable by default
+func IsUnretriableError(err error) bool {
+	return !IsRetriableError(err)
+}
+
+// IsRetriableError checks if an error is Retriable. If error provided does not
+// implement the HTTPError interface, it is considered retriable by default
+func IsRetriableError(err error) bool {
+	if nil == err {
+		return true
+	}
+	httperr := ToHTTPError(err)
+	return httperr.Retriable()
 }
 
 // stackTrace returns the current stack trace
